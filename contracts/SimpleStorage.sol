@@ -25,6 +25,12 @@ contract SimpleStorage {
         blockCount++;
     }
 
+    function saveNameAndSum(string calldata name, uint256 sum) public {
+        blocks.push(BlockData(blockCount, name, sum, msg.sender));
+        emit BlockCreated(blockCount, name, sum, msg.sender);
+        blockCount++;
+    }
+
     function saveSum(uint256 num1, uint256 num2) public {
         uint256 sum = num1 + num2;
         blocks.push(BlockData(blockCount, "", sum, msg.sender));
