@@ -1,11 +1,17 @@
+// Import necessary dependencies
 import { useRouter } from "next/router";
 import { useState, useEffect } from "react";
 import { ethers } from "ethers";
-import { toast, ToastContainer } from "react-toastify";
+import { toast, ToastContainer } from "react-toastify"; // For showing notifications
 import Link from "next/link";
 import { SimpleStorageABI } from "../../../lib/SimpleStorageABI";
 import "react-toastify/dist/ReactToastify.css";
 
+/**
+ * Initializes and returns an ethers provider connected to Infura
+ * @returns {Promise<ethers.JsonRpcProvider>} Configured provider instance
+ * @throws {Error} If Infura URL is not configured
+ */
 const initializeProvider = async () => {
   const infuraUrl = process.env.NEXT_PUBLIC_INFURA_SEPOLIA_URL;
   if (!infuraUrl) {
@@ -13,25 +19,31 @@ const initializeProvider = async () => {
   }
 
   const provider = new ethers.JsonRpcProvider(infuraUrl);
-  await provider.getNetwork(); // Test the connection
+  await provider.getNetwork(); // Verify connection is working
   return provider;
 };
 
+/**
+ * BlockDetails component - Displays detailed information about a specific block
+ * including transaction details and contract data
+ */
 export default function BlockDetails() {
   const router = useRouter();
-  const { id } = router.query;
+  const { id } = router.query; // Get block ID from URL params
 
-  const [block, setBlock] = useState(null);
-  const [txDetails, setTxDetails] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  // State management
+  const [block, setBlock] = useState(null);        // Stores block data from contract
+  const [txDetails, setTxDetails] = useState(null); // Stores transaction details
+  const [loading, setLoading] = useState(true);     // Loading state indicator
+  const [error, setError] = useState(null);         // Error state management
 
+  // Effect hook to fetch block details when component mounts or ID changes
   useEffect(() => {
     const fetchBlockDetails = async () => {
-      if (!id) return;
+      if (!id) return; // Don't fetch if ID is not available yet
 
       try {
-        // Initialize provider
+        // Initialize blockchain connection
         const provider = await initializeProvider();
         const contractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS;
 
@@ -39,40 +51,61 @@ export default function BlockDetails() {
           throw new Error("Contract address not configured. Check your environment variables.");
         }
 
+        // Create contract instance
         const contract = new ethers.Contract(contractAddress, SimpleStorageABI, provider);
 
-        // Fetch block data from contract
+        // Fetch block data directly from the smart contract
         const blockData = await contract.getBlock(id);
 
-        // Fetch transaction details from the event logs
-        const filter = contract.filters.BlockCreated(id);
+        // Set up event filtering to find the block creation transaction
+        const filter = contract.filters.BlockCreated();
         const events = await contract.queryFilter(filter);
+        
+        // Find the specific event for this block ID
+        const relevantEvent = events.find(event => {
+          try {
+            const eventId = Number(event.args[0]); // ID is first argument in event
+            return eventId === Number(id);
+          } catch (error) {
+            console.error('Error parsing event:', error);
+            return false;
+          }
+        });
 
-        if (events.length > 0) {
-          const event = events[0];
-          const tx = await provider.getTransaction(event.transactionHash);
-          const receipt = await provider.getTransactionReceipt(event.transactionHash);
+        if (relevantEvent) {
+          // Fetch detailed transaction information
+          const tx = await provider.getTransaction(relevantEvent.transactionHash);
+          const receipt = await provider.getTransactionReceipt(relevantEvent.transactionHash);
           const blockInfo = await provider.getBlock(receipt.blockNumber);
 
-          // Calculate gas fees
+          // Calculate transaction costs
           const gasUsed = receipt.gasUsed;
           const gasPrice = tx.gasPrice;
-          const txFee = gasUsed.mul(gasPrice);
+          const txFee = gasUsed * gasPrice; // Total transaction fee in wei
 
+          // Structure transaction details for display
           setTxDetails({
-            hash: event.transactionHash,
+            hash: relevantEvent.transactionHash,
             status: receipt.status === 1 ? "Success" : "Failed",
             blockNumber: receipt.blockNumber,
             timestamp: new Date(blockInfo.timestamp * 1000).toUTCString(),
             from: tx.from,
             to: tx.to,
-            value: ethers.utils.formatEther(tx.value || 0),
+            value: ethers.formatEther(tx.value || 0n), // Convert to ETH, default to 0 if null
             gasLimit: tx.gasLimit.toString(),
             gasUsed: gasUsed.toString(),
-            gasPrice: ethers.utils.formatUnits(gasPrice, "gwei"),
-            txFee: ethers.utils.formatEther(txFee),
+            gasPrice: ethers.formatUnits(gasPrice, "gwei"), // Convert to Gwei for readability
+            txFee: ethers.formatEther(txFee), // Convert to ETH
             nonce: tx.nonce,
-            input: tx.data,
+            input: tx.data, // Raw transaction input data
+            type: tx.type,
+            // Parse event data for easy access
+            eventData: {
+              id: Number(relevantEvent.args[0]),
+              name: relevantEvent.args[1],
+              sum: Number(relevantEvent.args[2]),
+              creator: relevantEvent.args[3]
+            }
           });
         } else {
           throw new Error("Transaction details not found.");
@@ -90,8 +123,9 @@ export default function BlockDetails() {
     };
 
     fetchBlockDetails();
-  }, [id]);
+  }, [id]); // Re-run when ID changes
 
+  // Loading state UI
   if (loading) {
     return (
       <div className="container mx-auto p-4">
@@ -102,6 +136,7 @@ export default function BlockDetails() {
     );
   }
 
+  // Error state UI
   if (error) {
     return (
       <div className="container mx-auto p-4">
@@ -115,6 +150,7 @@ export default function BlockDetails() {
     );
   }
 
+  // Not found state UI
   if (!block || !txDetails) {
     return (
       <div className="container mx-auto p-4">
@@ -128,11 +164,13 @@ export default function BlockDetails() {
     );
   }
 
+  // Main UI rendering with all block and transaction details
   return (
     <div className="container mx-auto p-4">
       <div className="bg-white rounded-lg shadow-lg p-6">
         <h1 className="text-2xl font-bold mb-4">Block Details</h1>
 
+        {/* Transaction hash and status section */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <h2 className="font-semibold mb-2">Transaction Hash:</h2>
@@ -146,7 +184,29 @@ export default function BlockDetails() {
           </div>
         </div>
 
-        {/* Additional transaction and block details */}
+        {/* Block number and timestamp section */}
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <h2 className="font-semibold mb-2">Block Number:</h2>
+            <div>{txDetails.blockNumber}</div>
+          </div>
+          <div>
+            <h2 className="font-semibold mb-2">Timestamp:</h2>
+            <div>{txDetails.timestamp}</div>
+          </div>
+        </div>
+
+        {/* Contract data section */}
+        <div className="mt-4">
+          <h2 className="font-semibold mb-2">Contract Data:</h2>
+          <div className="bg-gray-50 p-4 rounded">
+            <div className="mb-2">Name: {txDetails.eventData.name || 'N/A'}</div>
+            <div className="mb-2">Sum: {txDetails.eventData.sum.toString()}</div>
+            <div>Creator: {txDetails.eventData.creator}</div>
+          </div>
+        </div>
+
+        {/* Transaction addresses section */}
         <div className="mt-4">
           <h2 className="font-semibold mb-2">From:</h2>
           <div className="text-blue-500 break-all">{txDetails.from}</div>
@@ -154,7 +214,30 @@ export default function BlockDetails() {
           <div className="text-blue-500 break-all">{txDetails.to}</div>
         </div>
 
-        <Link href="/blocks" className="text-blue-500 hover:underline mt-4 block">
+        {/* Detailed transaction information section */}
+        <div className="mt-4">
+          <h2 className="font-semibold mb-2">Transaction Details:</h2>
+          <div className="bg-gray-50 p-4 rounded space-y-2">
+            <div>Value: {txDetails.value} ETH</div>
+            <div>Gas Limit: {txDetails.gasLimit}</div>
+            <div>Gas Used: {txDetails.gasUsed} ({((Number(txDetails.gasUsed) / Number(txDetails.gasLimit)) * 100).toFixed(2)}%)</div>
+            <div>Gas Price: {txDetails.gasPrice} Gwei</div>
+            <div>Transaction Fee: {txDetails.txFee} ETH</div>
+            <div>Nonce: {txDetails.nonce}</div>
+            <div>Type: {txDetails.type}</div>
+          </div>
+        </div>
+
+        {/* Raw transaction input data section */}
+        <div className="mt-4">
+          <h2 className="font-semibold mb-2">Input Data:</h2>
+          <div className="bg-gray-50 p-4 rounded break-all font-mono text-sm">
+            {txDetails.input}
+          </div>
+        </div>
+
+        {/* Navigation link */}
+        <Link href="/blocks" className="text-blue-500 hover:underline mt-8 block">
           ← Back to Blocks
         </Link>
       </div>
