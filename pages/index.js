@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { ethers } from "ethers";
-import { getContract } from "../lib/contractUtils"; // Ensure this function is correctly implemented
+import { getContract } from "../lib/contractUtils";
+import { connectWallet } from "../lib/web3"; // Import the connectWallet function
 import dynamic from "next/dynamic";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -12,36 +12,29 @@ const Home = () => {
     const [num1, setNum1] = useState("");
     const [num2, setNum2] = useState("");
     const [provider, setProvider] = useState(null);
+    const [signer, setSigner] = useState(null);
 
+    // Simplified connection handler using web3.js
     const handleConnect = async () => {
         try {
-            const { ethereum } = window;
-            if (!ethereum || !ethereum.isMetaMask) {
-                toast.error("Please install MetaMask to use this application!");
-                return;
-            }
-
-            // Request account access
-            const accounts = await ethereum.request({ method: "eth_requestAccounts" });
-            if (!accounts || accounts.length === 0) {
-                toast.error("No accounts found!");
-                return;
-            }
-
-            // Create provider
-            const web3Provider = new ethers.BrowserProvider(ethereum);
+            // Use the connectWallet function from web3.js
+            const { provider: web3Provider, signer: web3Signer } = await connectWallet();
+            
             setProvider(web3Provider);
+            setSigner(web3Signer);
             toast.success("Wallet connected successfully!");
 
-            // Listen for account changes
-            ethereum.on("accountsChanged", (newAccounts) => {
-                if (newAccounts.length === 0) {
-                    setProvider(null);
-                    toast.info("Wallet disconnected");
-                } else {
-                    const newProvider = new ethers.BrowserProvider(ethereum);
+            // Listen for account changes through the provider
+            web3Provider.provider.on("accountsChanged", async () => {
+                try {
+                    const { provider: newProvider, signer: newSigner } = await connectWallet();
                     setProvider(newProvider);
+                    setSigner(newSigner);
                     toast.info("Account changed");
+                } catch (error) {
+                    setProvider(null);
+                    setSigner(null);
+                    toast.info("Wallet disconnected");
                 }
             });
 
@@ -57,14 +50,12 @@ const Home = () => {
 
     const saveName = async () => {
         try {
-            if (!provider) {
+            if (!signer) {
                 toast.error("Please connect your wallet first.");
                 return;
             }
 
-            const signer = await provider.getSigner();
             const contract = await getContract(signer);
-
             const tx = await contract.saveName(name);
             await tx.wait();
 
@@ -82,14 +73,12 @@ const Home = () => {
 
     const saveSum = async () => {
         try {
-            if (!provider) {
+            if (!signer) {
                 toast.error("Please connect your wallet first.");
                 return;
             }
 
-            const signer = await provider.getSigner();
             const contract = await getContract(signer);
-
             const tx = await contract.saveSum(Number(num1), Number(num2));
             await tx.wait();
 
@@ -106,14 +95,14 @@ const Home = () => {
         }
     };
 
-    // Cleanup effect for MetaMask listeners
+    // Cleanup effect for provider listeners
     useEffect(() => {
         return () => {
-            if (window.ethereum) {
-                window.ethereum.removeAllListeners("accountsChanged");
+            if (provider?.provider?.removeAllListeners) {
+                provider.provider.removeAllListeners("accountsChanged");
             }
         };
-    }, []);
+    }, [provider]);
 
     return (
         <MetaMaskProvider>
@@ -125,14 +114,14 @@ const Home = () => {
                             onClick={handleConnect}
                             className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 flex items-center space-x-2"
                         >
-                            {provider ? (
+                            {signer ? (
                                 <>
                                     <span className="h-2 w-2 bg-green-500 rounded-full"></span>
                                     <span>Connected</span>
                                 </>
                             ) : (
                                 <>
-                                    <span>Connect MetaMask</span>
+                                    <span>Connect Wallet</span>
                                 </>
                             )}
                         </button>
@@ -151,9 +140,9 @@ const Home = () => {
                         />
                         <button
                             onClick={saveName}
-                            disabled={!provider}
+                            disabled={!signer}
                             className={`w-full py-2 rounded ${
-                                provider
+                                signer
                                     ? "bg-blue-500 text-white hover:bg-blue-600"
                                     : "bg-gray-300 text-gray-500 cursor-not-allowed"
                             }`}
@@ -179,9 +168,9 @@ const Home = () => {
                         />
                         <button
                             onClick={saveSum}
-                            disabled={!provider}
+                            disabled={!signer}
                             className={`w-full py-2 rounded ${
-                                provider
+                                signer
                                     ? "bg-blue-500 text-white hover:bg-blue-600"
                                     : "bg-gray-300 text-gray-500 cursor-not-allowed"
                             }`}
