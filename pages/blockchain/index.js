@@ -11,7 +11,14 @@ export default function BlockchainStats() {
 
     const fetchBlockchainData = async () => {
         try {
-            const provider = new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_INFURA_SEPOLIA_URL);
+            // Initialize provider with proper error handling
+            const infuraUrl = process.env.NEXT_PUBLIC_INFURA_SEPOLIA_URL;
+            if (!infuraUrl) {
+                throw new Error("Infura URL not configured. Please check your environment variables.");
+            }
+
+            // Initialize provider using BrowserProvider
+            const provider = new ethers.BrowserProvider(window.ethereum);
             
             // Fetch latest block
             const latestBlock = await provider.getBlock('latest');
@@ -19,22 +26,19 @@ export default function BlockchainStats() {
             // Fetch network details
             const network = await provider.getNetwork();
             
-            // Get gas price
-            const gasPrice = await provider.getGasPrice();
-            
+            // Get gas price and fee data using RPC calls
+            const [baseFeePerGas, maxPriorityFeePerGas] = await Promise.all([
+                provider.send('eth_baseFeePerGas', []),
+                provider.send('eth_maxPriorityFeePerGas', [])
+            ]);
+
             // Get pending transactions (mempool)
             const pendingCount = await provider.send('txpool_status', []);
-            
-            // Fetch fee data
-            const feeData = await provider.getFeeData();
-
-            // Get chain ID
-            const chainId = network.chainId;
 
             setStats({
                 network: {
                     name: network.name,
-                    chainId: chainId.toString(),
+                    chainId: network.chainId.toString(),
                 },
                 latestBlock: {
                     number: latestBlock.number,
@@ -50,9 +54,8 @@ export default function BlockchainStats() {
                     queued: parseInt(pendingCount.queued || '0', 16),
                 },
                 fees: {
-                    gasPrice: ethers.formatUnits(gasPrice, 'gwei'),
-                    maxFeePerGas: feeData.maxFeePerGas ? ethers.formatUnits(feeData.maxFeePerGas, 'gwei') : 'N/A',
-                    maxPriorityFeePerGas: feeData.maxPriorityFeePerGas ? ethers.formatUnits(feeData.maxPriorityFeePerGas, 'gwei') : 'N/A',
+                    baseFeePerGas: ethers.formatUnits(BigInt(baseFeePerGas || '0x0'), 'gwei'),
+                    maxPriorityFeePerGas: ethers.formatUnits(BigInt(maxPriorityFeePerGas || '0x0'), 'gwei'),
                 }
             });
             setError(null);
@@ -133,8 +136,7 @@ export default function BlockchainStats() {
                     <div className="bg-white p-6 rounded-lg shadow-md">
                         <h2 className="text-xl font-semibold mb-4">Gas & Fees (Gwei)</h2>
                         <div className="space-y-2">
-                            <div>Current Gas Price: {stats.fees.gasPrice}</div>
-                            <div>Max Fee Per Gas: {stats.fees.maxFeePerGas}</div>
+                            <div>Base Fee Per Gas: {stats.fees.baseFeePerGas}</div>
                             <div>Max Priority Fee: {stats.fees.maxPriorityFeePerGas}</div>
                         </div>
                     </div>
