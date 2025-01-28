@@ -4,6 +4,7 @@ import { getContract } from "../lib/contractUtils";
 import { connectWallet } from "../lib/walletConnector"; // Import the connectWallet function
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import Link from 'next/link';
 
 /**
  * Home component - Main page of the DApp
@@ -16,9 +17,10 @@ const Home = () => {
     const [num2, setNum2] = useState("");
     const [provider, setProvider] = useState(null);
     const [signer, setSigner] = useState(null);
+    const [isCombinedValid, setIsCombinedValid] = useState(false);
 
     /**
-     * Handles wallet connection using MetaMask
+     * Handles wallet connec ion using MetaMask
      * Sets up provider and signer for blockchain interactions
      * Also sets up listeners for account changes
      */
@@ -31,20 +33,21 @@ const Home = () => {
             setSigner(web3Signer);
             toast.success("Wallet connected successfully!");
 
-            // Listen for account changes through the provider
-            web3Provider.provider.on("accountsChanged", async () => {
-                try {
-                    const { provider: newProvider, signer: newSigner } = await connectWallet();
-                    setProvider(newProvider);
-                    setSigner(newSigner);
-                    toast.info("Account changed");
-                } catch (error) {
-                    setProvider(null);
-                    setSigner(null);
-                    toast.info("Wallet disconnected");
-                }
-            });
-
+            // Fix: Use the window.ethereum event listener instead
+            if (window.ethereum) {
+                window.ethereum.on("accountsChanged", async () => {
+                    try {
+                        const { provider: newProvider, signer: newSigner } = await connectWallet();
+                        setProvider(newProvider);
+                        setSigner(newSigner);
+                        toast.info("Account changed");
+                    } catch (error) {
+                        setProvider(null);
+                        setSigner(null);
+                        toast.info("Wallet disconnected");
+                    }
+                });
+            }
         } catch (error) {
             console.error("Error connecting wallet:", error);
             if (error.code === 4001) {
@@ -112,14 +115,54 @@ const Home = () => {
         }
     };
 
+    const saveNameAndSum = async () => {
+        try {
+            if (!signer) {
+                toast.error("Please connect your wallet first.");
+                return;
+            }
+
+            const contract = await getContract(signer);
+            
+            // Save name first
+            const nameTx = await contract.saveName(name);
+            await nameTx.wait();
+            toast.info("Name saved, now saving sum...");
+            
+            // Then save sum
+            const sumTx = await contract.saveSum(Number(num1), Number(num2));
+            await sumTx.wait();
+
+            // Clear all inputs after success
+            setName("");
+            setNum1("");
+            setNum2("");
+            toast.success("Name and Sum saved successfully!");
+        } catch (error) {
+            console.error("Error saving name and sum:", error);
+            if (error.code === 4001) {
+                toast.error("Transaction was rejected. Please try again.");
+            } else {
+                toast.error("Failed to save name and sum. Please try again.");
+            }
+        }
+    };
+
     // Cleanup effect to remove event listeners when component unmounts
     useEffect(() => {
         return () => {
-            if (provider?.provider?.removeAllListeners) {
-                provider.provider.removeAllListeners("accountsChanged");
+            if (window.ethereum) {
+                window.ethereum.removeListener("accountsChanged", () => {});
             }
         };
-    }, [provider]);
+    }, []);
+
+    useEffect(() => {
+        // Check if all fields are filled
+        const isNameValid = name.trim() !== "";
+        const areSumFieldsValid = num1 !== "" && num2 !== "";
+        setIsCombinedValid(isNameValid && areSumFieldsValid);
+    }, [name, num1, num2]);
 
     // Render the UI with two main sections: Save Name and Save Sum
     return (
@@ -147,7 +190,7 @@ const Home = () => {
             </div>
             <ToastContainer position="top-right" autoClose={5000} />
             {/* Main content grid with two cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
                 {/* Save Name card */}
                 <div className="bg-white p-6 rounded-lg shadow-md">
                     <h2 className="text-xl font-semibold mb-4">Save Name</h2>
@@ -199,6 +242,37 @@ const Home = () => {
                         Save Sum
                     </button>
                 </div>
+            </div>
+
+            {/* Add blank line */}
+            <div className="h-4"></div>
+
+            {/* Add combined save button with spacing */}
+            <div className="mt-8 mb-8 text-center">
+                <button
+                    onClick={saveNameAndSum}
+                    disabled={!signer || !isCombinedValid}
+                    className={`w-full max-w-md mx-auto py-3 rounded-lg ${
+                        signer && isCombinedValid
+                            ? "bg-green-500 text-white hover:bg-green-600"
+                            : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                    }`}
+                >
+                    Save Name and Sum
+                </button>
+            </div>
+
+            {/* Add blank line */}
+            <div className="h-4"></div>
+
+            {/* Add Blocks button section with spacing */}
+            <div className="mt-8 text-center">
+                <Link
+                    href="/blocks"
+                    className="inline-block bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600 transition-colors duration-200"
+                >
+                    View All Blocks
+                </Link>
             </div>
         </div>
     );

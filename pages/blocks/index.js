@@ -185,7 +185,7 @@ export default function Blocks() {
           {blocks.map((block) => (
             <Link
               key={block.id}
-              href={`/blocks/${block.id}`}
+              href={`/blocks/${block.ethBlockNumber}`}
               className="p-4 border rounded hover:bg-gray-50 transition-colors duration-200"
             >
               <div className="flex justify-between items-start">

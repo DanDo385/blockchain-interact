@@ -29,7 +29,7 @@ const initializeProvider = async () => {
  */
 export default function BlockDetails() {
   const router = useRouter();
-  const { id } = router.query; // Get block ID from URL params
+  const { id } = router.query; // This is now the Ethereum block number
 
   // State management
   const [block, setBlock] = useState(null);        // Stores block data from contract
@@ -40,10 +40,9 @@ export default function BlockDetails() {
   // Effect hook to fetch block details when component mounts or ID changes
   useEffect(() => {
     const fetchBlockDetails = async () => {
-      if (!id) return; // Don't fetch if ID is not available yet
+      if (!id) return;
 
       try {
-        // Initialize blockchain connection
         const provider = await initializeProvider();
         const contractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS;
 
@@ -51,65 +50,62 @@ export default function BlockDetails() {
           throw new Error("Contract address not configured. Check your environment variables.");
         }
 
-        // Create contract instance
         const contract = new ethers.Contract(contractAddress, SimpleStorageABI, provider);
 
-        // Fetch block data directly from the smart contract
-        const blockData = await contract.getBlock(id);
-
-        // Set up event filtering to find the block creation transaction
+        // Create event filter for BlockCreated events
         const filter = contract.filters.BlockCreated();
         const events = await contract.queryFilter(filter);
         
-        // Find the specific event for this block ID
-        const relevantEvent = events.find(event => {
-          try {
-            const eventId = Number(event.args[0]); // ID is first argument in event
-            return eventId === Number(id);
-          } catch (error) {
-            console.error('Error parsing event:', error);
-            return false;
-          }
+        // Find the event that matches our Ethereum block number
+        const relevantEvent = events.find(async (event) => {
+          const receipt = await provider.getTransactionReceipt(event.transactionHash);
+          return receipt.blockNumber === Number(id);
         });
 
-        if (relevantEvent) {
-          // Fetch detailed transaction information
-          const tx = await provider.getTransaction(relevantEvent.transactionHash);
-          const receipt = await provider.getTransactionReceipt(relevantEvent.transactionHash);
-          const blockInfo = await provider.getBlock(receipt.blockNumber);
-
-          // Calculate transaction costs
-          const gasUsed = receipt.gasUsed;
-          const gasPrice = tx.gasPrice;
-          const txFee = gasUsed * gasPrice; // Total transaction fee in wei
-
-          // Structure transaction details for display
-          setTxDetails({
-            hash: relevantEvent.transactionHash,
-            status: receipt.status === 1 ? "Success" : "Failed",
-            blockNumber: receipt.blockNumber,
-            timestamp: new Date(blockInfo.timestamp * 1000).toUTCString(),
-            from: tx.from,
-            to: tx.to,
-            value: ethers.formatEther(tx.value || 0n), // Convert to ETH, default to 0 if null
-            gasLimit: tx.gasLimit.toString(),
-            gasUsed: gasUsed.toString(),
-            gasPrice: ethers.formatUnits(gasPrice, "gwei"), // Convert to Gwei for readability
-            txFee: ethers.formatEther(txFee), // Convert to ETH
-            nonce: tx.nonce,
-            input: tx.data, // Raw transaction input data
-            type: tx.type,
-            // Parse event data for easy access
-            eventData: {
-              id: Number(relevantEvent.args[0]),
-              name: relevantEvent.args[1],
-              sum: Number(relevantEvent.args[2]),
-              creator: relevantEvent.args[3]
-            }
-          });
-        } else {
-          throw new Error("Transaction details not found.");
+        if (!relevantEvent) {
+          throw new Error("Block not found");
         }
+
+        // Get the contract's internal block ID from the event
+        const contractBlockId = Number(relevantEvent.args[0]);
+        
+        // Now fetch the block data using the contract's internal ID
+        const blockData = await contract.getBlock(contractBlockId);
+
+        // Fetch detailed transaction information
+        const tx = await provider.getTransaction(relevantEvent.transactionHash);
+        const receipt = await provider.getTransactionReceipt(relevantEvent.transactionHash);
+        const blockInfo = await provider.getBlock(receipt.blockNumber);
+
+        // Calculate transaction costs
+        const gasUsed = receipt.gasUsed;
+        const gasPrice = tx.gasPrice;
+        const txFee = gasUsed * gasPrice; // Total transaction fee in wei
+
+        // Structure transaction details for display
+        setTxDetails({
+          hash: relevantEvent.transactionHash,
+          status: receipt.status === 1 ? "Success" : "Failed",
+          blockNumber: receipt.blockNumber,
+          timestamp: new Date(blockInfo.timestamp * 1000).toUTCString(),
+          from: tx.from,
+          to: tx.to,
+          value: ethers.formatEther(tx.value || 0n), // Convert to ETH, default to 0 if null
+          gasLimit: tx.gasLimit.toString(),
+          gasUsed: gasUsed.toString(),
+          gasPrice: ethers.formatUnits(gasPrice, "gwei"), // Convert to Gwei for readability
+          txFee: ethers.formatEther(txFee), // Convert to ETH
+          nonce: tx.nonce,
+          input: tx.data, // Raw transaction input data
+          type: tx.type,
+          // Parse event data for easy access
+          eventData: {
+            id: Number(relevantEvent.args[0]),
+            name: relevantEvent.args[1],
+            sum: Number(relevantEvent.args[2]),
+            creator: relevantEvent.args[3]
+          }
+        });
 
         setBlock(blockData);
         setError(null);
@@ -123,7 +119,7 @@ export default function BlockDetails() {
     };
 
     fetchBlockDetails();
-  }, [id]); // Re-run when ID changes
+  }, [id]);
 
   // Loading state UI
   if (loading) {
