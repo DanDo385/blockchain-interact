@@ -11,14 +11,12 @@ export default function BlockchainStats() {
 
     const fetchBlockchainData = async () => {
         try {
-            // Initialize provider with proper error handling
             const infuraUrl = process.env.NEXT_PUBLIC_INFURA_SEPOLIA_URL;
             if (!infuraUrl) {
                 throw new Error("Infura URL not configured. Please check your environment variables.");
             }
 
-            // Initialize provider using BrowserProvider
-            const provider = new ethers.BrowserProvider(window.ethereum);
+            const provider = new ethers.JsonRpcProvider(infuraUrl);
             
             // Fetch latest block
             const latestBlock = await provider.getBlock('latest');
@@ -26,11 +24,8 @@ export default function BlockchainStats() {
             // Fetch network details
             const network = await provider.getNetwork();
             
-            // Get gas price and fee data using RPC calls
-            const [baseFeePerGas, maxPriorityFeePerGas] = await Promise.all([
-                provider.send('eth_baseFeePerGas', []),
-                provider.send('eth_maxPriorityFeePerGas', [])
-            ]);
+            // Get fee data using getFeeData() method
+            const feeData = await provider.getFeeData();
 
             // Get pending transactions (mempool)
             const pendingCount = await provider.send('txpool_status', []);
@@ -54,8 +49,9 @@ export default function BlockchainStats() {
                     queued: parseInt(pendingCount.queued || '0', 16),
                 },
                 fees: {
-                    baseFeePerGas: ethers.formatUnits(BigInt(baseFeePerGas || '0x0'), 'gwei'),
-                    maxPriorityFeePerGas: ethers.formatUnits(BigInt(maxPriorityFeePerGas || '0x0'), 'gwei'),
+                    gasPrice: ethers.formatUnits(feeData.gasPrice || 0n, 'gwei'),
+                    maxFeePerGas: feeData.maxFeePerGas ? ethers.formatUnits(feeData.maxFeePerGas, 'gwei') : 'N/A',
+                    maxPriorityFeePerGas: feeData.maxPriorityFeePerGas ? ethers.formatUnits(feeData.maxPriorityFeePerGas, 'gwei') : 'N/A',
                 }
             });
             setError(null);
@@ -136,7 +132,8 @@ export default function BlockchainStats() {
                     <div className="bg-white p-6 rounded-lg shadow-md">
                         <h2 className="text-xl font-semibold mb-4">Gas & Fees (Gwei)</h2>
                         <div className="space-y-2">
-                            <div>Base Fee Per Gas: {stats.fees.baseFeePerGas}</div>
+                            <div>Gas Price: {stats.fees.gasPrice}</div>
+                            <div>Max Fee Per Gas: {stats.fees.maxFeePerGas}</div>
                             <div>Max Priority Fee: {stats.fees.maxPriorityFeePerGas}</div>
                         </div>
                     </div>
