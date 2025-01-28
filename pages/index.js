@@ -1,18 +1,27 @@
+// Import necessary dependencies
 import React, { useState, useEffect } from "react";
 import { getContract } from "../lib/contractUtils";
-import { connectWallet } from "../lib/web3"; // Import the connectWallet function
-import dynamic from "next/dynamic";
+import { connectWallet } from "../lib/walletConnector"; // Import the connectWallet function
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
+/**
+ * Home component - Main page of the DApp
+ * Provides interface for connecting wallet and interacting with smart contract
+ */
 const Home = () => {
+    // State management for form inputs and Web3 connection
     const [name, setName] = useState("");
     const [num1, setNum1] = useState("");
     const [num2, setNum2] = useState("");
     const [provider, setProvider] = useState(null);
     const [signer, setSigner] = useState(null);
 
-    // Simplified connection handler using web3.js
+    /**
+     * Handles wallet connection using MetaMask
+     * Sets up provider and signer for blockchain interactions
+     * Also sets up listeners for account changes
+     */
     const handleConnect = async () => {
         try {
             // Use the connectWallet function from web3.js
@@ -46,6 +55,11 @@ const Home = () => {
         }
     };
 
+    /**
+     * Saves a name to the blockchain using the smart contract
+     * Requires an active wallet connection
+     * Clears input field after successful transaction
+     */
     const saveName = async () => {
         try {
             if (!signer) {
@@ -69,6 +83,11 @@ const Home = () => {
         }
     };
 
+    /**
+     * Saves the sum of two numbers to the blockchain
+     * Requires an active wallet connection
+     * Clears input fields after successful transaction
+     */
     const saveSum = async () => {
         try {
             if (!signer) {
@@ -93,7 +112,7 @@ const Home = () => {
         }
     };
 
-    // Cleanup effect for provider listeners
+    // Cleanup effect to remove event listeners when component unmounts
     useEffect(() => {
         return () => {
             if (provider?.provider?.removeAllListeners) {
@@ -102,8 +121,10 @@ const Home = () => {
         };
     }, [provider]);
 
+    // Render the UI with two main sections: Save Name and Save Sum
     return (
         <div className="container mx-auto p-4">
+            {/* Header section with title and wallet connection button */}
             <div className="flex justify-between items-center mb-8">
                 <h1 className="text-3xl font-bold">SimpleStorage DApp</h1>
                 <div className="flex items-center space-x-2">
@@ -125,7 +146,9 @@ const Home = () => {
                 </div>
             </div>
             <ToastContainer position="top-right" autoClose={5000} />
+            {/* Main content grid with two cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* Save Name card */}
                 <div className="bg-white p-6 rounded-lg shadow-md">
                     <h2 className="text-xl font-semibold mb-4">Save Name</h2>
                     <input
@@ -147,6 +170,7 @@ const Home = () => {
                         Save Name
                     </button>
                 </div>
+                {/* Save Sum card */}
                 <div className="bg-white p-6 rounded-lg shadow-md">
                     <h2 className="text-xl font-semibold mb-4">Save Sum</h2>
                     <input
