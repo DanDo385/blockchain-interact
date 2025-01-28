@@ -7,59 +7,81 @@ import { ToastContainer, toast } from "react-toastify"; // Toast notifications
 import "react-toastify/dist/ReactToastify.css"; // Toast notification styles
 
 /**
- * Blocks component - Displays a list of all blocks stored in the smart contract
- * Includes real-time updates when new blocks are created
+ * Blocks component - Main page component that displays a list of all blocks stored in the smart contract
+ * Features:
+ * - Fetches and displays all blocks from the SimpleStorage contract
+ * - Real-time updates when new blocks are created via event listeners
+ * - Error handling and loading states
+ * - Links to individual block detail pages
+ * - Refresh functionality to manually update the block list
+ * 
+ * @component
+ * @returns {JSX.Element} Rendered component
  */
 export default function Blocks() {
-  // State management
-  const [blocks, setBlocks] = useState([]); // Stores array of block data
-  const [loading, setLoading] = useState(true); // Loading state indicator
-  const [error, setError] = useState(null); // Error state management
+  // State management using React hooks
+  const [blocks, setBlocks] = useState([]); // Stores array of formatted block data from the contract
+  const [loading, setLoading] = useState(true); // Controls loading spinner visibility
+  const [error, setError] = useState(null); // Stores any error messages during data fetching
 
   /**
    * Fetches all blocks from the smart contract and formats them for display
-   * Includes metadata like Ethereum block number and timestamp
+   * Process:
+   * 1. Checks for MetaMask installation
+   * 2. Connects to the contract
+   * 3. Retrieves total block count
+   * 4. Iterates through blocks in reverse order (newest first)
+   * 5. Fetches detailed data for each block including:
+   *    - Basic block data from contract
+   *    - Creation event data
+   *    - Transaction receipt
+   *    - Ethereum block metadata
+   * 6. Updates state with formatted block data
+   * 
+   * @async
+   * @function
+   * @throws {Error} If MetaMask is not installed or connection fails
    */
   const loadBlocks = async () => {
     try {
-      // Check for MetaMask installation
+      // Verify MetaMask installation before proceeding
       if (!window.ethereum) {
         toast.error("Please install MetaMask to view blocks");
         setLoading(false);
         return;
       }
 
-      // Initialize provider and contract
+      // Initialize blockchain connection
       const provider = new ethers.BrowserProvider(window.ethereum);
       const contract = await getContract(provider);
 
-      // Get total number of blocks
+      // Fetch total number of blocks from contract
       const blockCount = await contract.blockCount();
       const blocksData = [];
       const count = Number(blockCount);
 
       console.log("Total blocks:", count);
 
-      // Create event filter for BlockCreated events
+      // Create event filter to find block creation events
       const filter = contract.filters.BlockCreated();
 
-      // Iterate through blocks in reverse order (newest first)
+      // Process blocks in reverse chronological order
       for (let i = count - 1; i >= 0; i--) {
         try {
-          // Fetch block data from contract
+          // Get block data from contract storage
           const block = await contract.getBlock(i);
           console.log("Raw block data:", block);
 
-          // Find corresponding creation event for this block
+          // Find the event that created this block
           const events = await contract.queryFilter(filter, 0, "latest");
           const event = events.find((e) => Number(e.args[0]) === i);
 
           if (event) {
-            // Get additional metadata from transaction receipt and block
+            // Fetch additional blockchain metadata
             const txReceipt = await provider.getTransactionReceipt(event.transactionHash);
             const ethBlock = await provider.getBlock(txReceipt.blockNumber);
 
-            // Format block data with metadata
+            // Format block data with all metadata
             const formattedBlock = formatBlock(block, {
               ethBlockNumber: txReceipt.blockNumber,
               timestamp: new Date(ethBlock.timestamp * 1000).toISOString(),
@@ -73,6 +95,7 @@ export default function Blocks() {
         }
       }
 
+      // Update state with fetched data
       setBlocks(blocksData);
       setError(null);
     } catch (error) {
@@ -84,13 +107,25 @@ export default function Blocks() {
     }
   };
 
-  // Effect hook for initial load and event listener setup
+  /**
+   * Effect hook that handles:
+   * 1. Initial block data loading
+   * 2. Setting up real-time event listeners for new blocks
+   * 3. Cleanup of event listeners on component unmount
+   * 
+   * The event listener automatically triggers a reload when new blocks are created,
+   * keeping the UI in sync with the blockchain state.
+   */
   useEffect(() => {
     loadBlocks();
 
     /**
-     * Sets up event listener for new block creation
-     * Reloads blocks when a new one is created
+     * Sets up blockchain event listeners for real-time updates
+     * Subscribes to BlockCreated events and reloads data when triggered
+     * 
+     * @async
+     * @function
+     * @returns {Function} Cleanup function to remove event listener
      */
     const setupBlockListener = async () => {
       if (!window.ethereum) return;
@@ -99,10 +134,10 @@ export default function Blocks() {
         const provider = new ethers.BrowserProvider(window.ethereum);
         const contract = await getContract(provider);
 
-        // Listen for BlockCreated events
+        // Subscribe to BlockCreated events
         contract.on("BlockCreated", (id, name, sum, creator) => {
           console.log("New block created:", { id: Number(id), name, sum: Number(sum), creator });
-          loadBlocks(); // Reload all blocks when a new one is created
+          loadBlocks(); // Reload all blocks to include the new one
         });
 
         return () => {
@@ -115,7 +150,7 @@ export default function Blocks() {
 
     setupBlockListener();
 
-    // Cleanup function to remove event listeners
+    // Cleanup function to remove event listeners when component unmounts
     return () => {
       if (window.ethereum) {
         const cleanup = async () => {
@@ -132,7 +167,7 @@ export default function Blocks() {
     };
   }, []);
 
-  // Loading state UI
+  // Render loading spinner while data is being fetched
   if (loading) {
     return (
       <div className="container mx-auto p-4">
@@ -143,7 +178,7 @@ export default function Blocks() {
     );
   }
 
-  // Error state UI
+  // Render error message with retry button if data fetch failed
   if (error) {
     return (
       <div className="container mx-auto p-4">
@@ -160,10 +195,10 @@ export default function Blocks() {
     );
   }
 
-  // Main UI - List of blocks
+  // Main UI rendering - List of blocks with details
   return (
     <div className="container mx-auto p-4">
-      {/* Header section with title and refresh button */}
+      {/* Header section with title and manual refresh button */}
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">All Blocks</h1>
         <button
@@ -174,14 +209,14 @@ export default function Blocks() {
         </button>
       </div>
 
-      {/* Conditional rendering based on blocks existence */}
+      {/* Show message if no blocks exist, otherwise render block list */}
       {blocks.length === 0 ? (
         <div className="text-center py-8 text-gray-600">
           No blocks found. Create some blocks on the home page!
         </div>
       ) : (
         <div className="grid gap-4">
-          {/* Map through blocks and render each as a link to its details page */}
+          {/* Render each block as a clickable card linking to its details page */}
           {blocks.map((block) => (
             <Link
               key={block.id}
@@ -189,6 +224,7 @@ export default function Blocks() {
               className="p-4 border rounded hover:bg-gray-50 transition-colors duration-200"
             >
               <div className="flex justify-between items-start">
+                {/* Left side - Block identification and basic data */}
                 <div>
                   <div className="font-semibold">
                     Block #{block.ethBlockNumber.toLocaleString()}
@@ -199,6 +235,7 @@ export default function Blocks() {
                   <div>Name: {block.name || "N/A"}</div>
                   <div>Sum: {block.sum.toString()}</div>
                 </div>
+                {/* Right side - Creator address and timestamp */}
                 <div className="text-sm text-gray-500">
                   <div className="truncate" style={{ maxWidth: "200px" }}>
                     Creator: {block.creator}
@@ -215,7 +252,7 @@ export default function Blocks() {
         </div>
       )}
 
-      {/* Navigation link back to home page */}
+      {/* Navigation link to return to home page */}
       <Link
         href="/"
         className="mt-8 inline-block text-blue-500 hover:text-blue-600 hover:underline"
@@ -223,7 +260,7 @@ export default function Blocks() {
         ← Back to Home
       </Link>
 
-      {/* Toast notification container */}
+      {/* Toast notifications container for displaying alerts */}
       <ToastContainer position="top-right" autoClose={5000} />
     </div>
   );
