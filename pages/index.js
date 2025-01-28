@@ -269,9 +269,15 @@ const Home = () => {
             <div className="mt-8 text-center">
                 <Link
                     href="/blocks"
-                    className="inline-block bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600 transition-colors duration-200"
+                    className="inline-block bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600 transition-colors duration-200 mr-4"
                 >
                     View All Blocks
+                </Link>
+                <Link
+                    href="/blockchain"
+                    className="inline-block bg-purple-500 text-white px-6 py-3 rounded-lg hover:bg-purple-600 transition-colors duration-200"
+                >
+                    Blockchain Stats
                 </Link>
             </div>
         </div>
